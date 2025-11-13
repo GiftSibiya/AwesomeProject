@@ -6,8 +6,11 @@ import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.twiliovoicereactnative.VoiceApplicationProxy
 
 class MainApplication : Application(), ReactApplication {
+
+  private lateinit var voiceApplicationProxy: VoiceApplicationProxy
 
   override val reactHost: ReactHost by lazy {
     getDefaultReactHost(
@@ -22,6 +25,13 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+    voiceApplicationProxy = VoiceApplicationProxy(this)
+    voiceApplicationProxy.onCreate()
     loadReactNative(this)
+  }
+
+  override fun onTerminate() {
+    voiceApplicationProxy.onTerminate()
+    super.onTerminate()
   }
 }
