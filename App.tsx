@@ -47,11 +47,17 @@ class ErrorBoundary extends React.Component<
 }
 
 function App() {
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [callTarget, setCallTarget] = useState('');
   const [callStatus, setCallStatus] = useState('Initializing...');
   const [voice, setVoice] = useState<Voice | null>(null);
   const [activeCall, setActiveCall] = useState<Call | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Helper function to determine if input is a phone number (starts with + or is all digits)
+  const isPhoneNumber = (input: string): boolean => {
+    // Phone numbers typically start with + or are all digits
+    return input.startsWith('+') || /^[\d\s\-()]+$/.test(input);
+  };
 
   useEffect(() => {
     const initVoice = async () => {
@@ -94,20 +100,20 @@ function App() {
         let fetchedData = await response.json();
         console.log('Token response status:', fetchedData);
         
-        if (!response.token) {
+        if (!fetchedData.token) {
           const errorData = await response.json().catch(() => ({ message: response.statusText }));
           throw new Error(`Token fetch failed: ${response.status} - ${errorData.message || response.statusText}`);
         }
         
         const data = await response.json();
-        console.log('Token response data:', data);
+        console.log('Token response data:', fetchedData.token);
         
-        if (!data.token) {
+        if (!fetchedData.token) {
           throw new Error('No token in response');
         }
 
         setCallStatus('Registering with Twilio...');
-        await voiceInstance.register(data.token);
+        await voiceInstance.register(fetchedData.token);
         setCallStatus('Ready');
         setError(null);
       } catch (initError: any) {
@@ -127,8 +133,8 @@ function App() {
   }, []);
 
   const makeCall = async () => {
-    if (!phoneNumber) {
-      Alert.alert('Error', 'Please enter a phone number');
+    if (!callTarget.trim()) {
+      Alert.alert('Error', 'Please enter a phone number or identity');
       return;
     }
 
@@ -140,17 +146,28 @@ function App() {
     try {
       setCallStatus('Getting call token...');
       
-      // Get a new token with the call parameters
-      const identity = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const isPhone = isPhoneNumber(callTarget.trim());
+      const targetIdentity = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Prepare request body based on whether it's a phone number or identity
+      const requestBody: any = {
+        identity: targetIdentity,
+      };
+
+      if (isPhone) {
+        // If it's a phone number, send it as 'To'
+        requestBody.To = callTarget.trim();
+      } else {
+        // If it's an identity, send it as 'ToIdentity' or 'Identity' (adjust based on your backend)
+        requestBody.ToIdentity = callTarget.trim();
+      }
+
       const response = await fetch(TWILIO_TOKEN_ENDPOINT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          identity: identity,
-          To: phoneNumber,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       console.log('Response:', response);
@@ -161,15 +178,20 @@ function App() {
       }
 
       const data = await response.json();
-      if (!data.token) {
-        throw new Error('No token in response');
-      }
+     
 
       setCallStatus('Calling...');
+      
+      // Prepare connect params based on whether it's a phone number or identity
+      const connectParams: any = {};
+      if (isPhone) {
+        connectParams.To = callTarget.trim();
+      } else {
+        connectParams.ToIdentity = callTarget.trim();
+      }
+
       const call = await voice.connect(data.token, {
-        params: {
-          To: phoneNumber
-        }
+        params: connectParams
       });
 
       setActiveCall(call);
@@ -218,19 +240,18 @@ function App() {
 
           <TextInput
             style={styles.input}
-            placeholder="Enter phone number (+1234567890)"
-            value={phoneNumber}
-            onChangeText={setPhoneNumber}
-            keyboardType="phone-pad"
+            placeholder="Enter phone number (+1234567890) or identity"
+            value={callTarget}
+            onChangeText={setCallTarget}
             placeholderTextColor="#999"
-            editable={!error && callStatus === 'Ready'}
+            // editable={!error && callStatus === 'Ready'}
           />
 
           {!activeCall ? (
             <TouchableOpacity 
               style={[styles.callButton, (error || callStatus !== 'Ready') && styles.buttonDisabled]} 
               onPress={makeCall}
-              disabled={!!error || callStatus !== 'Ready'}
+              // disabled={!!error || callStatus !== 'Ready'}
             >
               <Text style={styles.buttonText}>📞 Call</Text>
             </TouchableOpacity>
